@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>shishimon // system telemetry</title>
+  <style>
+    :root{color-scheme:dark;--bg:#070b0d;--panel:#0d1417;--line:#1d3432;--text:#d9fff3;--muted:#71918b;--green:#57f2b1;--cyan:#4de4f5;--amber:#ffd166;--red:#ff6b7a}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 85% -10%,#123432 0,#070b0d 38%);color:var(--text);font:14px ui-monospace,SFMono-Regular,Menlo,monospace;min-height:100vh}
+    body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.035;background:repeating-linear-gradient(0deg,#fff 0,#fff 1px,transparent 1px,transparent 4px)}
+    main{max-width:1100px;margin:auto;padding:20px 16px 42px}.topbar{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:20px}
+    .brand{display:flex;align-items:center;gap:12px}.mark{color:var(--green);font-size:24px;text-shadow:0 0 16px var(--green)}h1{font-size:22px;letter-spacing:2px;margin:0}.tag{color:var(--muted);font-size:11px;margin-top:3px}
+    #status{color:var(--green);font-size:12px}#status:before{content:"●";margin-right:7px;text-shadow:0 0 10px var(--green)}
+    .section-title{color:var(--cyan);font-size:12px;letter-spacing:2px;margin:22px 0 10px}.section-title:before{content:"// ";color:var(--muted)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.card{background:linear-gradient(145deg,#101b1c,#0b1114);border:1px solid var(--line);border-radius:4px;padding:15px;box-shadow:0 0 22px #0005}
+    .metric-label{color:var(--muted);font-size:11px;letter-spacing:1px}.value{font-size:27px;color:var(--green);margin:10px 0 9px;text-shadow:0 0 12px #57f2b133}.value small{font-size:13px;color:var(--muted)}.bar{height:5px;background:#172825;border-radius:1px;overflow:hidden}.fill{height:100%;width:0;background:linear-gradient(90deg,var(--cyan),var(--green));box-shadow:0 0 10px var(--green);transition:width .5s}
+    .self{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:1px;padding:0;overflow:hidden}.self .cell{padding:15px;background:#0d1718}.self .cell:first-child{background:linear-gradient(110deg,#12362d,#0d1718)}.self .value{font-size:22px;margin-bottom:0}.hint{font-size:11px;color:var(--muted);margin-top:5px}
+    .table-card{padding:0;overflow:hidden}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:11px 14px;border-bottom:1px solid #18302e}th{font-size:10px;letter-spacing:1px;color:var(--muted);font-weight:400}td{font-size:12px}td:first-child{color:#dffff5;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}tbody tr:last-child td{border-bottom:0}
+    .footer{color:#496d67;font-size:10px;text-align:center;margin-top:24px}
+    @media(max-width:600px){
+      main{padding:12px 8px 24px}.topbar{align-items:flex-start;padding-bottom:12px;margin-bottom:14px}.mark{font-size:19px}.brand{gap:8px}h1{font-size:18px;letter-spacing:1.5px}.tag{font-size:9px;margin-top:2px}#status{font-size:10px;padding-top:3px}
+      .section-title{font-size:10px;letter-spacing:1.3px;margin:14px 0 7px}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.card{padding:11px;border-radius:3px}.metric-label{font-size:9px;letter-spacing:.7px}.value{font-size:21px;margin:7px 0 6px}.value small{font-size:10px}.hint{font-size:9px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bar{height:4px}
+      .grid .card:nth-child(3){order:3}.grid .card:nth-child(4){order:5}.grid .card:nth-child(5){order:4}.self{grid-template-columns:repeat(3,1fr)}.self .cell{padding:10px}.self .cell:first-child{grid-column:span 3}.self .value{font-size:17px}
+      .table-card{overflow:visible}table{table-layout:fixed}th,td{padding:8px 6px;font-size:10px}th{font-size:8px}th:first-child{width:52%}th:nth-child(2){width:16%}th:nth-child(3){width:20%}th:last-child{width:12%}td:first-child{max-width:0}td:nth-child(2),td:nth-child(3),td:last-child{white-space:nowrap}.footer{font-size:8px;margin-top:15px;line-height:1.5}
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header class="topbar"><div class="brand"><div class="mark">[◈]</div><div><h1>SHISHIMON</h1><div class="tag">LOCAL SYSTEM TELEMETRY // v1.0</div></div></div><div id="status">CONNECTING</div></header>
+  <div class="section-title">HOST OVERVIEW</div>
+  <div class="grid">
+    <div class="card"><div class="metric-label">CPU LOAD</div><div class="value"><span id="cpu">--</span><small> %</small></div><div class="bar"><div id="cpuBar" class="fill"></div></div></div>
+    <div class="card"><div class="metric-label">MEMORY USED</div><div class="value"><span id="mem">--</span><small> %</small></div><div id="memDetail" class="hint">-- used / -- total</div><div class="bar"><div id="memBar" class="fill"></div></div></div>
+    <div class="card"><div class="metric-label">MEMORY PRESSURE</div><div id="pressure" class="value">--</div><div class="hint">virtual memory state</div></div>
+    <div class="card"><div class="metric-label">SWAP ALLOCATED</div><div id="swap" class="value">--</div><div class="hint">disk-backed memory</div></div>
+    <div class="card"><div class="metric-label">BATTERY</div><div id="battery" class="value">--</div><div class="hint">power charge</div></div>
+    <div class="card"><div class="metric-label">SYSTEM UPTIME</div><div id="uptime" class="value">--</div><div class="hint">since last boot</div></div>
+  </div>
+  <div class="section-title">SHISHIMON PROCESS // SELF-MONITOR</div>
+  <div class="card self">
+    <div class="cell"><div class="metric-label">DASHBOARD OVERHEAD</div><div class="value">ACTIVE</div><div class="hint">telemetry agent footprint</div></div>
+    <div class="cell"><div class="metric-label">CPU</div><div id="selfCpu" class="value">--</div><div class="hint">process utilization</div></div>
+    <div class="cell"><div class="metric-label">RAM</div><div id="selfMem" class="value">--</div><div class="hint">resident memory</div></div>
+    <div class="cell"><div class="metric-label">PID</div><div id="selfPid" class="value">--</div><div class="hint">running process</div></div>
+  </div>
+  <div class="section-title">TOP PROCESSES // CPU SORTED</div>
+  <div class="card table-card"><table><thead><tr><th>PROCESS</th><th>CPU</th><th>MEMORY</th><th>PID</th></tr></thead><tbody id="processes"></tbody></table></div>
+  <div class="footer">STREAM INTERVAL 2s // CONNECTION ENCRYPTION: LOCAL TOKEN // SHISHIMON ONLINE</div>
+</main>
+<script>
+const token=new URLSearchParams(location.search).get("token"), fmt=bytes=>{const u=["B","KB","MB","GB"];let i=0;while(bytes>=1024&&i<3){bytes/=1024;i++}return bytes.toFixed(i?1:0)+" "+u[i]}, set=(id,v)=>document.getElementById(id).textContent=v;
+const source=new EventSource("/events?token="+encodeURIComponent(token)); source.onopen=()=>set("status","LIVE"); source.onerror=()=>set("status","OFFLINE");
+source.onmessage=e=>{const s=JSON.parse(e.data);set("cpu",s.cpu.toFixed(1));set("mem",s.memory_percent.toFixed(1));set("memDetail",fmt(s.memory_used)+" used / "+fmt(s.memory_total)+" total");set("pressure",s.memory_pressure.toUpperCase());set("swap",fmt(s.swap_used));set("battery",s.battery<0?"N/A":s.battery+" %");set("uptime",s.uptime);set("selfCpu",s.self.cpu.toFixed(2)+" %");set("selfMem",fmt(s.self.memory));set("selfPid",s.self.pid);document.getElementById("cpuBar").style.width=Math.min(s.cpu,100)+"%";document.getElementById("memBar").style.width=Math.min(s.memory_percent,100)+"%";document.getElementById("processes").innerHTML=s.top_processes.map(p=>`<tr><td>${p.name}</td><td>${p.cpu.toFixed(1)}%</td><td>${fmt(p.memory)}</td><td>${p.pid}</td></tr>`).join("")};
+</script>
+</body>
+</html>
