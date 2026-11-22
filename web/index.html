@@ -20,7 +20,7 @@
     .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}.cal div{padding:5px 0;font-size:12px;border-radius:2px;color:var(--text)}.cal .dow{color:var(--muted);font-size:9px;letter-spacing:1px}.cal .today{background:var(--green);color:#04120d;font-weight:bold;box-shadow:0 0 12px var(--green)}.cal .wk{color:var(--amber)}
     .table-card{padding:0;overflow:hidden}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:11px 14px;border-bottom:1px solid #18302e}th{font-size:10px;letter-spacing:1px;color:var(--muted);font-weight:400}td{font-size:12px}td:first-child{color:#dffff5;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}tbody tr:last-child td{border-bottom:0}
     .footer{color:#496d67;font-size:10px;text-align:center;margin-top:24px}
-    .hidden{display:none!important}.tabs{display:flex;gap:6px;margin:14px 0 0}.tab{border:1px solid var(--line);border-radius:3px;background:#0b1214;color:var(--muted);padding:8px 12px;font:12px inherit;cursor:pointer;text-transform:uppercase;letter-spacing:1px}.tab.active{border-color:var(--green);color:#06110d;background:var(--green);box-shadow:0 0 14px #57f2b133}.usage-heading{display:flex;justify-content:space-between;align-items:flex-end}.usage-heading .section-title{margin-bottom:10px}.usage-actions{display:flex;gap:8px;align-items:center;margin-bottom:10px}.range-picker{display:flex;gap:5px}.range-picker button,#usageRefresh{border:1px solid var(--line);border-radius:3px;background:#0b1214;color:var(--muted);padding:7px 9px;font:11px inherit;cursor:pointer}.range-picker button.active{border-color:var(--green);color:var(--green)}#usageRefresh{color:var(--cyan)}.usage-summary{margin-bottom:2px}.usage-summary .value{font-size:22px}.usage-account{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.usage-account .account-card{padding:12px;border:1px solid var(--line);border-radius:3px;background:#0b1214}.account-card span{display:block;color:var(--muted);font-size:9px;margin-bottom:7px}.account-card strong{font-size:14px;overflow-wrap:anywhere}.usage-error{border:1px solid #713846;background:#241016;color:#ff9cad;padding:10px 12px;margin:10px 0;border-radius:3px}
+    .hidden{display:none!important}.tabs{display:flex;gap:6px;margin:14px 0 0}.tab{border:1px solid var(--line);border-radius:3px;background:#0b1214;color:var(--muted);padding:8px 12px;font:12px inherit;cursor:pointer;text-transform:uppercase;letter-spacing:1px}.tab.active{border-color:var(--green);color:#06110d;background:var(--green);box-shadow:0 0 14px #57f2b133}.usage-heading{display:flex;justify-content:space-between;align-items:flex-end}.usage-heading .section-title{margin-bottom:10px}.usage-actions{display:flex;gap:8px;align-items:center;margin-bottom:10px}.range-picker{display:flex;gap:5px}.range-picker button,#usageRefresh{border:1px solid var(--line);border-radius:3px;background:#0b1214;color:var(--muted);padding:7px 9px;font:11px inherit;cursor:pointer}.range-picker button.active{border-color:var(--green);color:var(--green)}#usageRefresh{color:var(--cyan)}.usage-summary{margin-bottom:2px}.usage-summary .value{font-size:22px}.usage-account{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.usage-account .account-card{padding:12px;border:1px solid var(--line);border-radius:3px;background:#0b1214}.account-card span{display:block;color:var(--muted);font-size:9px;margin-bottom:7px}.account-card strong{font-size:14px;overflow-wrap:anywhere}.usage-error{border:1px solid #713846;background:#241016;color:#ff9cad;padding:10px 12px;margin:10px 0;border-radius:3px}.today-ai-card{display:flex;flex-direction:column;justify-content:center}.today-ai-line{display:flex;align-items:baseline;justify-content:space-between;gap:8px;color:var(--muted);font-size:10px;margin-top:7px}.today-ai-line strong{color:var(--green);font-size:16px}.today-ai-line:last-child strong{color:var(--cyan)}
     @media(max-width:600px){
       main{padding:12px 8px 24px}.topbar{align-items:flex-start;padding-bottom:12px;margin-bottom:14px}.mark{font-size:19px}.brand{gap:8px}h1{font-size:18px;letter-spacing:1.5px}.tag{font-size:9px;margin-top:2px}#status{font-size:10px;padding-top:3px}
       .section-title{font-size:10px;letter-spacing:1.3px;margin:14px 0 7px}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.card{padding:11px;border-radius:3px}.metric-label{font-size:9px;letter-spacing:.7px}.value{font-size:21px;margin:7px 0 6px}.value small{font-size:10px}.hint{font-size:9px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bar{height:4px}
@@ -44,10 +44,14 @@
     <div class="card"><div class="metric-label">CPU LOAD</div><div class="value"><span id="cpu">--</span><small> %</small></div><div class="bar"><div id="cpuBar" class="fill"></div></div></div>
     <div class="card"><div class="metric-label">MEMORY USED</div><div class="value"><span id="mem">--</span><small> %</small></div><div id="memDetail" class="hint">-- used / -- total</div><div class="bar"><div id="memBar" class="fill"></div></div></div>
     <div class="card"><div class="metric-label">MEMORY PRESSURE</div><div id="pressure" class="value">--</div><div class="hint">virtual memory state</div></div>
-    <div class="card"><div class="metric-label">SWAP ALLOCATED</div><div id="swap" class="value">--</div><div class="hint">disk-backed memory</div></div>
     <div class="card"><div class="metric-label">BATTERY</div><div id="battery" class="value">--</div><div class="hint">power charge</div></div>
     <div class="card"><div class="metric-label">SYSTEM UPTIME</div><div id="uptime" class="value">--</div><div class="hint">since last boot</div></div>
-    <div class="card"><div class="metric-label">TODAY'S AI USE</div><div id="todayAiTokens" class="value">--</div><div id="todayAiDetail" class="hint">loading usage summary</div></div>
+    <div class="card today-ai-card"><div class="metric-label">TODAY'S AI USE</div><div id="todayAiOpenCode" class="today-ai-line">OPENCODE <strong>--</strong></div><div id="todayAiCommandCode" class="today-ai-line">COMMAND CODE <strong>--</strong></div></div>
+  </div>
+  <div class="section-title">TIME // CALENDAR</div>
+  <div class="time-grid">
+    <div class="card clock-card"><div class="metric-label">LOCAL TIME</div><div class="clock"><span id="clock">--:--:--</span><small id="ampm"></small></div><div id="dateline" class="dateline">--</div></div>
+    <div class="card"><div class="cal-head"><div id="calMonth" class="cal-month">--</div><div id="calDays" class="cal-days"></div></div><div id="cal" class="cal"></div></div>
   </div>
   <div class="section-title">SHISHIMON PROCESS // SELF-MONITOR</div>
   <div class="card self">
@@ -55,11 +59,6 @@
     <div class="cell"><div class="metric-label">CPU</div><div id="selfCpu" class="value">--</div><div class="hint">process utilization</div></div>
     <div class="cell"><div class="metric-label">RAM</div><div id="selfMem" class="value">--</div><div class="hint">resident memory</div></div>
     <div class="cell"><div class="metric-label">PID</div><div id="selfPid" class="value">--</div><div class="hint">running process</div></div>
-  </div>
-  <div class="section-title">TIME // CALENDAR</div>
-  <div class="time-grid">
-    <div class="card clock-card"><div class="metric-label">LOCAL TIME</div><div class="clock"><span id="clock">--:--:--</span><small id="ampm"></small></div><div id="dateline" class="dateline">--</div></div>
-    <div class="card"><div class="cal-head"><div id="calMonth" class="cal-month">--</div><div id="calDays" class="cal-days"></div></div><div id="cal" class="cal"></div></div>
   </div>
   <div class="section-title">TOP PROCESSES // CPU SORTED</div>
   <div class="card table-card"><table><thead><tr><th>PROCESS</th><th>CPU</th><th>MEMORY</th><th>PID</th></tr></thead><tbody id="processes"></tbody></table></div>
@@ -112,6 +111,18 @@ tick();setInterval(tick,1000);
 let usageRange="today";
 const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[c]);
 const fmtNumber=value=>new Intl.NumberFormat("en-US").format(Number(value||0));
+const fmtTokens=value=>{
+  const n=Number(value||0);
+  if(n>=1_000_000){
+    const millions=n/1_000_000;
+    return (millions>=100?millions.toFixed(1):millions>=10?millions.toFixed(2):millions.toFixed(2)).replace(/\.?0+$/,"")+"M";
+  }
+  if(n>=1_000){
+    const thousands=n/1_000;
+    return (thousands>=100?thousands.toFixed(0):thousands>=10?thousands.toFixed(1):thousands.toFixed(1)).replace(/\.?0+$/,"")+"K";
+  }
+  return fmtNumber(n);
+};
 const fmtMoney=value=>"$"+Number(value||0).toFixed(4);
 
 async function loadTodaySummary(){
@@ -129,11 +140,11 @@ async function loadTodaySummary(){
     const command=data.commandCode||{},summary=command.summary||{};
     const commandTokens=Number(summary.todayTokens||0);
     const combined=openTokens+commandTokens;
-    set("todayAiTokens",fmtNumber(combined)+" TOKENS");
-    set("todayAiDetail",openModels+" models // "+fmtMoney(openCost)+" OC // "+fmtMoney(summary.costToday||0)+" CC");
+    document.getElementById("todayAiOpenCode").innerHTML="OPENCODE <strong>"+fmtTokens(openTokens)+"</strong>";
+    document.getElementById("todayAiCommandCode").innerHTML="COMMAND CODE <strong>"+fmtTokens(commandTokens)+"</strong>";
   }catch(error){
-    set("todayAiTokens","--");
-    set("todayAiDetail","usage unavailable");
+    document.getElementById("todayAiOpenCode").innerHTML="OPENCODE <strong>--</strong>";
+    document.getElementById("todayAiCommandCode").innerHTML="COMMAND CODE <strong>--</strong>";
   }
 }
 
@@ -151,10 +162,10 @@ async function loadUsage(){
     }else{
       const t=data.opencode.tokens||{};const cache=t.cache||{};
       const total=Number(t.input||0)+Number(t.output||0)+Number(t.reasoning||0)+Number(cache.read||0)+Number(cache.write||0);
-      set("opencodeCost",fmtMoney(data.opencode.cost));set("opencodeTokens",fmtNumber(total));
+      set("opencodeCost",fmtMoney(data.opencode.cost));set("opencodeTokens",fmtTokens(total));
       document.getElementById("opencodeModels").innerHTML=(data.opencode.models||[]).map(m=>{
         const model=m.model||{},mt=m.tokens||{},mc=mt.cache||{};
-        return "<tr><td>"+escapeHtml(model.id)+(model.providerID?" <span class='hint'>// "+escapeHtml(model.providerID)+"</span>":"")+"</td><td>"+fmtNumber(m.steps)+"</td><td>"+fmtNumber(mt.input)+"</td><td>"+fmtNumber(mt.output)+"</td><td>"+fmtNumber(mc.read)+"</td><td>"+fmtMoney(m.cost)+"</td></tr>";
+        return "<tr><td>"+escapeHtml(model.id)+(model.providerID?" <span class='hint'>// "+escapeHtml(model.providerID)+"</span>":"")+"</td><td>"+fmtNumber(m.steps)+"</td><td>"+fmtTokens(mt.input)+"</td><td>"+fmtTokens(mt.output)+"</td><td>"+fmtTokens(mc.read)+"</td><td>"+fmtMoney(m.cost)+"</td></tr>";
       }).join("")||'<tr><td colspan="6">NO MODEL USAGE IN THIS RANGE</td></tr>';
     }
     if(data.commandCode.error){
@@ -162,11 +173,11 @@ async function loadUsage(){
       document.getElementById("commandDetails").innerHTML='<div class="account-card"><span>ERROR</span><strong>'+escapeHtml(data.commandCode.error)+"</strong></div>";
     }else{
       const c=data.commandCode,s=c.summary||{},credits=c.credits||{},windows=c.windows||{},five=windows.fiveHour||{},weekly=windows.weekly||{};
-      set("commandCost",fmtMoney(s.cost));set("commandTokens",fmtNumber(s.totalTokens));
+      set("commandCost",fmtMoney(s.cost));set("commandTokens",fmtTokens(s.totalTokens));
       const cards=[
         ["ACCOUNT",c.account||"--"],["PLAN",c.planId||"--"],["STATUS",c.status||"--"],
         ["REMAINING CREDITS","$"+Number(credits.remaining||0).toFixed(2)],["REQUESTS",fmtNumber(s.requests)],["REQUESTS TODAY",fmtNumber(s.requestsToday)],
-        ["INPUT TOKENS",fmtNumber(s.inputTokens)],["OUTPUT TOKENS",fmtNumber(s.outputTokens)],
+        ["INPUT TOKENS",fmtTokens(s.inputTokens)],["OUTPUT TOKENS",fmtTokens(s.outputTokens)],
         ["5-HOUR WINDOW",five.used!=null?five.used+"/"+five.cap:"NOT EXPOSED"],["WEEKLY WINDOW",weekly.used!=null?weekly.used+"/"+weekly.cap:"NOT EXPOSED"],
         ["COST TODAY",fmtMoney(s.costToday)]
       ];
