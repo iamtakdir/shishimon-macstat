@@ -20,18 +20,25 @@
     .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}.cal div{padding:5px 0;font-size:12px;border-radius:2px;color:var(--text)}.cal .dow{color:var(--muted);font-size:9px;letter-spacing:1px}.cal .today{background:var(--green);color:#04120d;font-weight:bold;box-shadow:0 0 12px var(--green)}.cal .wk{color:var(--amber)}
     .table-card{padding:0;overflow:hidden}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:11px 14px;border-bottom:1px solid #18302e}th{font-size:10px;letter-spacing:1px;color:var(--muted);font-weight:400}td{font-size:12px}td:first-child{color:#dffff5;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}tbody tr:last-child td{border-bottom:0}
     .footer{color:#496d67;font-size:10px;text-align:center;margin-top:24px}
+    .hidden{display:none!important}.tabs{display:flex;gap:6px;margin:14px 0 0}.tab{border:1px solid var(--line);border-radius:3px;background:#0b1214;color:var(--muted);padding:8px 12px;font:12px inherit;cursor:pointer;text-transform:uppercase;letter-spacing:1px}.tab.active{border-color:var(--green);color:#06110d;background:var(--green);box-shadow:0 0 14px #57f2b133}.usage-heading{display:flex;justify-content:space-between;align-items:flex-end}.usage-heading .section-title{margin-bottom:10px}.usage-actions{display:flex;gap:8px;align-items:center;margin-bottom:10px}.range-picker{display:flex;gap:5px}.range-picker button,#usageRefresh{border:1px solid var(--line);border-radius:3px;background:#0b1214;color:var(--muted);padding:7px 9px;font:11px inherit;cursor:pointer}.range-picker button.active{border-color:var(--green);color:var(--green)}#usageRefresh{color:var(--cyan)}.usage-summary{margin-bottom:2px}.usage-summary .value{font-size:22px}.usage-account{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.usage-account .account-card{padding:12px;border:1px solid var(--line);border-radius:3px;background:#0b1214}.account-card span{display:block;color:var(--muted);font-size:9px;margin-bottom:7px}.account-card strong{font-size:14px;overflow-wrap:anywhere}.usage-error{border:1px solid #713846;background:#241016;color:#ff9cad;padding:10px 12px;margin:10px 0;border-radius:3px}
     @media(max-width:600px){
       main{padding:12px 8px 24px}.topbar{align-items:flex-start;padding-bottom:12px;margin-bottom:14px}.mark{font-size:19px}.brand{gap:8px}h1{font-size:18px;letter-spacing:1.5px}.tag{font-size:9px;margin-top:2px}#status{font-size:10px;padding-top:3px}
       .section-title{font-size:10px;letter-spacing:1.3px;margin:14px 0 7px}.grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.card{padding:11px;border-radius:3px}.metric-label{font-size:9px;letter-spacing:.7px}.value{font-size:21px;margin:7px 0 6px}.value small{font-size:10px}.hint{font-size:9px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.bar{height:4px}
       .grid .card:nth-child(3){order:3}.grid .card:nth-child(4){order:5}.grid .card:nth-child(5){order:4}.self{grid-template-columns:repeat(3,1fr)}.self .cell{padding:10px}.self .cell:first-child{grid-column:span 3}.self .value{font-size:17px}
       .time-grid{grid-template-columns:1fr;gap:7px}.clock{font-size:34px;margin:6px 0 4px}.dateline{font-size:12px}.cal div{padding:4px 0;font-size:11px}
       .table-card{overflow:visible}table{table-layout:fixed}th,td{padding:8px 6px;font-size:10px}th{font-size:8px}th:first-child{width:52%}th:nth-child(2){width:16%}th:nth-child(3){width:20%}th:last-child{width:12%}td:first-child{max-width:0}td:nth-child(2),td:nth-child(3),td:last-child{white-space:nowrap}.footer{font-size:8px;margin-top:15px;line-height:1.5}
+      .tabs{margin-top:10px}.tab{padding:7px 9px;font-size:10px}.usage-heading{display:block}.usage-actions{display:flex;justify-content:space-between}.range-picker{overflow-x:auto}.range-picker button,#usageRefresh{padding:6px 7px;font-size:9px}.usage-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.usage-summary .value{font-size:16px}.usage-account{grid-template-columns:repeat(2,1fr)}.account-card strong{font-size:12px}
     }
   </style>
 </head>
 <body>
 <main>
   <header class="topbar"><div class="brand"><div class="mark">[◈]</div><div><h1>SHISHIMON</h1><div class="tag">LOCAL SYSTEM TELEMETRY // v1.0</div></div></div><div id="status">CONNECTING</div></header>
+  <nav class="tabs" aria-label="Dashboard sections">
+    <button class="tab active" data-tab="system">System</button>
+    <button class="tab" data-tab="usage">AI Usage</button>
+  </nav>
+  <section id="systemTab">
   <div class="section-title">HOST OVERVIEW</div>
   <div class="grid">
     <div class="card"><div class="metric-label">CPU LOAD</div><div class="value"><span id="cpu">--</span><small> %</small></div><div class="bar"><div id="cpuBar" class="fill"></div></div></div>
@@ -40,6 +47,7 @@
     <div class="card"><div class="metric-label">SWAP ALLOCATED</div><div id="swap" class="value">--</div><div class="hint">disk-backed memory</div></div>
     <div class="card"><div class="metric-label">BATTERY</div><div id="battery" class="value">--</div><div class="hint">power charge</div></div>
     <div class="card"><div class="metric-label">SYSTEM UPTIME</div><div id="uptime" class="value">--</div><div class="hint">since last boot</div></div>
+    <div class="card"><div class="metric-label">TODAY'S AI USE</div><div id="todayAiTokens" class="value">--</div><div id="todayAiDetail" class="hint">loading usage summary</div></div>
   </div>
   <div class="section-title">SHISHIMON PROCESS // SELF-MONITOR</div>
   <div class="card self">
@@ -55,6 +63,37 @@
   </div>
   <div class="section-title">TOP PROCESSES // CPU SORTED</div>
   <div class="card table-card"><table><thead><tr><th>PROCESS</th><th>CPU</th><th>MEMORY</th><th>PID</th></tr></thead><tbody id="processes"></tbody></table></div>
+  </section>
+  <section id="usageTab" class="hidden">
+    <div class="usage-heading">
+      <div>
+        <div class="section-title">AI USAGE // PROVIDER TELEMETRY</div>
+      </div>
+      <div class="usage-actions">
+        <nav class="range-picker" aria-label="OpenCode date range">
+          <button class="range active" data-range="today">Today</button>
+          <button class="range" data-range="7d">7 days</button>
+          <button class="range" data-range="30d">30 days</button>
+          <button class="range" data-range="year">Year</button>
+          <button class="range" data-range="all">All</button>
+        </nav>
+        <button id="usageRefresh" type="button">↻ Refresh</button>
+      </div>
+    </div>
+    <div id="usageError" class="usage-error hidden"></div>
+    <div class="grid usage-summary">
+      <div class="card"><div class="metric-label">OPENCODE COST</div><div id="opencodeCost" class="value">$0.0000</div></div>
+      <div class="card"><div class="metric-label">OPENCODE TOKENS</div><div id="opencodeTokens" class="value">0</div></div>
+      <div class="card"><div class="metric-label">CMD CODE COST</div><div id="commandCost" class="value">$0.0000</div></div>
+      <div class="card"><div class="metric-label">CMD CODE TOKENS</div><div id="commandTokens" class="value">0</div></div>
+    </div>
+    <div class="section-title">OPENCODE // BY MODEL</div>
+    <div class="card table-card">
+      <table><thead><tr><th>MODEL</th><th>STEPS</th><th>INPUT</th><th>OUTPUT</th><th>CACHE</th><th>COST</th></tr></thead><tbody id="opencodeModels"></tbody></table>
+    </div>
+    <div class="section-title">COMMAND CODE // ACCOUNT</div>
+    <div id="commandDetails" class="usage-account"></div>
+  </section>
   <div class="footer">STREAM INTERVAL 2s // CONNECTION ENCRYPTION: LOCAL TOKEN // SHISHIMON ONLINE</div>
 </main>
 <script>
@@ -70,6 +109,93 @@ let c=["S","M","T","W","T","F","S"].map(d=>`<div class="dow">${d}</div>`).join("
 for(let d=1;d<=days;d++){const wk=(first+d-1)%7===5||(first+d-1)%7===6?" wk":"";c+=`<div class="${d===n.getDate()?"today":wk.trim()}">${d}</div>`}
 document.getElementById("cal").innerHTML=c}
 tick();setInterval(tick,1000);
+let usageRange="today";
+const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[c]);
+const fmtNumber=value=>new Intl.NumberFormat("en-US").format(Number(value||0));
+const fmtMoney=value=>"$"+Number(value||0).toFixed(4);
+
+async function loadTodaySummary(){
+  try{
+    const response=await fetch("/api/usage?range=today&token="+encodeURIComponent(token));
+    if(!response.ok)return;
+    const data=await response.json();
+    let openTokens=0,openCost=0,openModels=0;
+    if(!data.opencode.error){
+      const t=data.opencode.tokens||{},cache=t.cache||{};
+      openTokens=Number(t.input||0)+Number(t.output||0)+Number(t.reasoning||0)+Number(cache.read||0)+Number(cache.write||0);
+      openCost=Number(data.opencode.cost||0);
+      openModels=(data.opencode.models||[]).length;
+    }
+    const command=data.commandCode||{},summary=command.summary||{};
+    const commandTokens=Number(summary.todayTokens||0);
+    const combined=openTokens+commandTokens;
+    set("todayAiTokens",fmtNumber(combined)+" TOKENS");
+    set("todayAiDetail",openModels+" models // "+fmtMoney(openCost)+" OC // "+fmtMoney(summary.costToday||0)+" CC");
+  }catch(error){
+    set("todayAiTokens","--");
+    set("todayAiDetail","usage unavailable");
+  }
+}
+
+async function loadUsage(){
+  const refresh=document.getElementById("usageRefresh");
+  refresh.disabled=true;refresh.textContent="...loading";
+  document.getElementById("usageError").classList.add("hidden");
+  try{
+    const response=await fetch("/api/usage?range="+encodeURIComponent(usageRange)+"&token="+encodeURIComponent(token));
+    if(!response.ok)throw new Error("Server returned "+response.status);
+    const data=await response.json();
+    if(data.opencode.error){
+      set("opencodeCost","--");set("opencodeTokens","--");
+      document.getElementById("opencodeModels").innerHTML='<tr><td colspan="6">'+escapeHtml(data.opencode.error)+"</td></tr>";
+    }else{
+      const t=data.opencode.tokens||{};const cache=t.cache||{};
+      const total=Number(t.input||0)+Number(t.output||0)+Number(t.reasoning||0)+Number(cache.read||0)+Number(cache.write||0);
+      set("opencodeCost",fmtMoney(data.opencode.cost));set("opencodeTokens",fmtNumber(total));
+      document.getElementById("opencodeModels").innerHTML=(data.opencode.models||[]).map(m=>{
+        const model=m.model||{},mt=m.tokens||{},mc=mt.cache||{};
+        return "<tr><td>"+escapeHtml(model.id)+(model.providerID?" <span class='hint'>// "+escapeHtml(model.providerID)+"</span>":"")+"</td><td>"+fmtNumber(m.steps)+"</td><td>"+fmtNumber(mt.input)+"</td><td>"+fmtNumber(mt.output)+"</td><td>"+fmtNumber(mc.read)+"</td><td>"+fmtMoney(m.cost)+"</td></tr>";
+      }).join("")||'<tr><td colspan="6">NO MODEL USAGE IN THIS RANGE</td></tr>';
+    }
+    if(data.commandCode.error){
+      set("commandCost","--");set("commandTokens","--");
+      document.getElementById("commandDetails").innerHTML='<div class="account-card"><span>ERROR</span><strong>'+escapeHtml(data.commandCode.error)+"</strong></div>";
+    }else{
+      const c=data.commandCode,s=c.summary||{},credits=c.credits||{},windows=c.windows||{},five=windows.fiveHour||{},weekly=windows.weekly||{};
+      set("commandCost",fmtMoney(s.cost));set("commandTokens",fmtNumber(s.totalTokens));
+      const cards=[
+        ["ACCOUNT",c.account||"--"],["PLAN",c.planId||"--"],["STATUS",c.status||"--"],
+        ["REMAINING CREDITS","$"+Number(credits.remaining||0).toFixed(2)],["REQUESTS",fmtNumber(s.requests)],["REQUESTS TODAY",fmtNumber(s.requestsToday)],
+        ["INPUT TOKENS",fmtNumber(s.inputTokens)],["OUTPUT TOKENS",fmtNumber(s.outputTokens)],
+        ["5-HOUR WINDOW",five.used!=null?five.used+"/"+five.cap:"NOT EXPOSED"],["WEEKLY WINDOW",weekly.used!=null?weekly.used+"/"+weekly.cap:"NOT EXPOSED"],
+        ["COST TODAY",fmtMoney(s.costToday)]
+      ];
+      document.getElementById("commandDetails").innerHTML=cards.map(x=>'<div class="account-card"><span>'+escapeHtml(x[0])+'</span><strong>'+escapeHtml(String(x[1]))+"</strong></div>").join("");
+    }
+  }catch(error){
+    const box=document.getElementById("usageError");box.textContent=error.message;box.classList.remove("hidden");
+  }finally{refresh.disabled=false;refresh.textContent="↻ Refresh";loadTodaySummary()}
+}
+
+document.querySelectorAll("[data-tab]").forEach(button=>{
+  button.addEventListener("click",()=>{
+    document.querySelectorAll("[data-tab]").forEach(b=>b.classList.remove("active"));
+    button.classList.add("active");
+    const usage=button.dataset.tab==="usage";
+    document.getElementById("systemTab").classList.toggle("hidden",usage);
+    document.getElementById("usageTab").classList.toggle("hidden",!usage);
+    if(usage)loadUsage();
+  });
+});
+document.querySelectorAll("[data-range]").forEach(button=>{
+  button.addEventListener("click",()=>{
+    document.querySelectorAll("[data-range]").forEach(b=>b.classList.remove("active"));
+    button.classList.add("active");usageRange=button.dataset.range;loadUsage();
+  });
+});
+document.getElementById("usageRefresh").addEventListener("click",loadUsage);
+loadTodaySummary();
+setInterval(loadTodaySummary,60_000);
 </script>
 </body>
 </html>

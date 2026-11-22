@@ -6,11 +6,13 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,6 +46,73 @@ type Stats struct {
 	Self           Process   `json:"self"`
 }
 
+type UsageResponse struct {
+	UpdatedAt   time.Time        `json:"updatedAt"`
+	OpenCode    OpenCodeUsage    `json:"opencode"`
+	CommandCode CommandCodeUsage `json:"commandCode"`
+}
+
+type OpenCodeUsage struct {
+	Error    string          `json:"error,omitempty"`
+	Sessions int             `json:"sessions,omitempty"`
+	Prompts  int             `json:"prompts,omitempty"`
+	Steps    int             `json:"steps,omitempty"`
+	Cost     float64         `json:"cost,omitempty"`
+	Tokens   OpenCodeTokens  `json:"tokens,omitempty"`
+	Models   []OpenCodeModel `json:"models,omitempty"`
+	Range    json.RawMessage `json:"range,omitempty"`
+}
+
+type OpenCodeTokens struct {
+	Input     int `json:"input"`
+	Output    int `json:"output"`
+	Reasoning int `json:"reasoning"`
+	Cache     struct {
+		Read  int `json:"read"`
+		Write int `json:"write"`
+	} `json:"cache"`
+}
+
+type OpenCodeModel struct {
+	Model struct {
+		ID         string `json:"id"`
+		ProviderID string `json:"providerID"`
+		Variant    string `json:"variant"`
+	} `json:"model"`
+	Steps  int            `json:"steps"`
+	Tokens OpenCodeTokens `json:"tokens"`
+	Cost   float64        `json:"cost"`
+}
+
+type CommandCodeUsage struct {
+	Error   string `json:"error,omitempty"`
+	Account string `json:"account,omitempty"`
+	PlanID  string `json:"planId,omitempty"`
+	Status  string `json:"status,omitempty"`
+	Credits struct {
+		Remaining float64 `json:"remaining"`
+		Monthly   float64 `json:"monthlyRemaining"`
+		Purchased float64 `json:"purchased"`
+		Free      float64 `json:"free"`
+	} `json:"credits"`
+	Windows struct {
+		FiveHour map[string]any `json:"fiveHour"`
+		Weekly   map[string]any `json:"weekly"`
+	} `json:"windows"`
+	Summary CommandCodeSummary `json:"summary"`
+}
+
+type CommandCodeSummary struct {
+	Requests      int     `json:"requests"`
+	RequestsToday int     `json:"requestsToday"`
+	Cost          float64 `json:"cost"`
+	CostToday     float64 `json:"costToday"`
+	InputTokens   int64   `json:"inputTokens"`
+	OutputTokens  int64   `json:"outputTokens"`
+	TotalTokens   int64   `json:"totalTokens"`
+	TodayTokens   int64   `json:"todayTokens"`
+}
+
 var statsCache struct {
 	sync.RWMutex
 	stats Stats
@@ -64,6 +133,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", auth(token, dashboardHandler))
 	mux.HandleFunc("/events", auth(token, eventsHandler))
+	mux.HandleFunc("/api/usage", auth(token, usageHandler))
 	mux.HandleFunc("/qr", auth(token, qrHandler(url)))
 
 	server := &http.Server{Addr: ":" + port, Handler: mux}
@@ -87,6 +157,220 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(data)
+}
+
+func usageHandler(w http.ResponseWriter, r *http.Request) {
+	rangeName := r.URL.Query().Get("range")
+	if !contains([]string{"today", "7d", "30d", "year", "all"}, rangeName) {
+		rangeName = "today"
+	}
+
+	response := UsageResponse{UpdatedAt: time.Now()}
+	openCode, err := collectOpenCodeUsage(rangeName)
+	if err != nil {
+		openCode.Error = err.Error()
+	}
+	response.OpenCode = openCode
+
+	commandCode, err := collectCommandCodeUsage()
+	if err != nil {
+		commandCode.Error = err.Error()
+	}
+	response.CommandCode = commandCode
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+func contains(values []string, value string) bool {
+	for _, item := range values {
+		if item == value {
+			return true
+		}
+	}
+	return false
+}
+
+func collectOpenCodeUsage(rangeName string) (OpenCodeUsage, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return OpenCodeUsage{}, err
+	}
+	bin := os.Getenv("OPENCODE_BIN")
+	if bin == "" {
+		bin = filepath.Join(home, ".opencode", "bin", "opencode")
+	}
+	args := []string{"stats", "--models", "--cost", "--json"}
+	switch rangeName {
+	case "today":
+		args = append(args, "--days", "0")
+	case "7d":
+		args = append(args, "--days", "7")
+	case "30d":
+		args = append(args, "--days", "30")
+	case "year":
+		args = append(args, "--year", strconv.Itoa(time.Now().Year()))
+	default:
+		args = append(args, "--all")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return OpenCodeUsage{}, fmt.Errorf("OpenCode stats unavailable: %w", err)
+	}
+
+	var result OpenCodeUsage
+	if err := json.Unmarshal(output, &result); err != nil {
+		return OpenCodeUsage{}, fmt.Errorf("could not parse OpenCode stats: %w", err)
+	}
+	return result, nil
+}
+
+func commandCodeKey() (string, error) {
+	if key := os.Getenv("COMMAND_CODE_API_KEY"); key != "" {
+		return key, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	authFile := os.Getenv("COMMAND_CODE_AUTH_FILE")
+	if authFile == "" {
+		authFile = filepath.Join(home, ".commandcode", "auth.json")
+	}
+	data, err := os.ReadFile(authFile)
+	if err != nil {
+		return "", fmt.Errorf("Command Code is not authenticated; run cmd login")
+	}
+	var auth struct {
+		APIKey string `json:"apiKey"`
+	}
+	if err := json.Unmarshal(data, &auth); err != nil || auth.APIKey == "" {
+		return "", fmt.Errorf("Command Code auth file is invalid")
+	}
+	return auth.APIKey, nil
+}
+
+func commandCodeRequest(pathname string) (map[string]any, error) {
+	key, err := commandCodeKey()
+	if err != nil {
+		return nil, err
+	}
+	baseURL := os.Getenv("COMMAND_CODE_BASE_URL")
+	if baseURL == "" {
+		baseURL = "https://api.commandcode.ai"
+	}
+	req, err := http.NewRequest(http.MethodGet, baseURL+pathname, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 20 * time.Second}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Command Code API request failed: %w", err)
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return nil, fmt.Errorf("Command Code API %d: %s", res.StatusCode, strings.TrimSpace(string(body)))
+	}
+	var result map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("could not parse Command Code API: %w", err)
+	}
+	return result, nil
+}
+
+func collectCommandCodeUsage() (CommandCodeUsage, error) {
+	whoami, err := commandCodeRequest("/alpha/whoami?limits=1")
+	if err != nil {
+		return CommandCodeUsage{}, err
+	}
+	credits, err := commandCodeRequest("/alpha/billing/credits")
+	if err != nil {
+		return CommandCodeUsage{}, err
+	}
+	subscriptions, err := commandCodeRequest("/alpha/billing/subscriptions")
+	if err != nil {
+		return CommandCodeUsage{}, err
+	}
+	summary, err := commandCodeRequest("/alpha/usage/summary")
+	if err != nil {
+		return CommandCodeUsage{}, err
+	}
+	today, err := commandCodeRequest("/alpha/usage/summary?since=" + time.Now().Format("2006-01-02") + "T00:00:00.000Z")
+	if err != nil {
+		today = map[string]any{}
+	}
+
+	var result CommandCodeUsage
+	if user, ok := whoami["user"].(map[string]any); ok {
+		result.Account, _ = firstString(user, "userName", "name")
+	}
+	if data, ok := subscriptions["data"].(map[string]any); ok {
+		result.PlanID, _ = data["planId"].(string)
+		result.Status, _ = data["status"].(string)
+	}
+	creditPool, _ := credits["credits"].(map[string]any)
+	monthly := number(creditPool["monthlyCredits"])
+	purchased := number(creditPool["purchasedCredits"])
+	free := number(creditPool["freeCredits"])
+	result.Credits.Monthly = monthly
+	result.Credits.Purchased = purchased
+	result.Credits.Free = free
+	result.Credits.Remaining = monthly + purchased + free
+	if windows, ok := credits["windowLimits"].(map[string]any); ok {
+		if five, ok := windows["fiveHour"].(map[string]any); ok {
+			result.Windows.FiveHour = five
+		}
+		if weekly, ok := windows["weekly"].(map[string]any); ok {
+			result.Windows.Weekly = weekly
+		}
+	}
+	result.Summary.Requests = int(number(summary["totalCount"]))
+	result.Summary.RequestsToday = int(number(today["totalCount"]))
+	result.Summary.Cost = number(summary["totalCost"])
+	result.Summary.CostToday = number(today["totalCost"])
+	result.Summary.InputTokens = int64(number(summary["totalTokensIn"]))
+	result.Summary.OutputTokens = int64(number(summary["totalTokensOut"]))
+	result.Summary.TotalTokens = int64(number(summary["totalTokens"]))
+	result.Summary.TodayTokens = int64(number(today["totalTokens"]))
+	return result, nil
+}
+
+func number(value any) float64 {
+	switch typed := value.(type) {
+	case float64:
+		return typed
+	case float32:
+		return float64(typed)
+	case int:
+		return float64(typed)
+	case int64:
+		return float64(typed)
+	case json.Number:
+		parsed, _ := typed.Float64()
+		return parsed
+	default:
+		return 0
+	}
+}
+
+func firstString(values map[string]any, keys ...string) (string, bool) {
+	for _, key := range keys {
+		if value, ok := values[key].(string); ok && value != "" {
+			return value, true
+		}
+	}
+	return "", false
 }
 
 func eventsHandler(w http.ResponseWriter, r *http.Request) {
