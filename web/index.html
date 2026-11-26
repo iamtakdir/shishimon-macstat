@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
   <title>shishimon // system telemetry</title>
   <style>
     :root{color-scheme:dark;--bg:#070b0d;--panel:#0d1417;--line:#1d3432;--text:#d9fff3;--muted:#71918b;--green:#57f2b1;--cyan:#4de4f5;--amber:#ffd166;--red:#ff6b7a}
@@ -94,6 +95,8 @@
     <div class="card table-card">
       <table><thead><tr><th>MODEL</th><th>STEPS</th><th>INPUT</th><th>OUTPUT</th><th>CACHE</th><th>COST</th></tr></thead><tbody id="opencodeModels"></tbody></table>
     </div>
+    <div class="section-title">OPENCODE // LIMITS</div>
+    <div id="opencodeLimits" class="usage-account"></div>
     <div class="section-title">CLAUDE CODE // BY MODEL</div>
     <div class="card table-card">
       <table><thead><tr><th>MODEL</th><th>MESSAGES</th><th>INPUT</th><th>OUTPUT</th><th>CACHE READ</th><th>CACHE WRITE</th></tr></thead><tbody id="claudeModels"></tbody></table>
@@ -176,6 +179,7 @@ async function loadUsage(){
     if(data.opencode.error){
       set("opencodeCost","--");set("opencodeTokens","--");
       document.getElementById("opencodeModels").innerHTML='<tr><td colspan="6">'+escapeHtml(data.opencode.error)+"</td></tr>";
+      document.getElementById("opencodeLimits").innerHTML='<div class="account-card"><span>LIMITS</span><strong>--</strong></div>';
     }else{
       const t=data.opencode.tokens||{};const cache=t.cache||{};
       const total=Number(t.input||0)+Number(t.output||0)+Number(t.reasoning||0)+Number(cache.read||0)+Number(cache.write||0);
@@ -184,6 +188,12 @@ async function loadUsage(){
         const model=m.model||{},mt=m.tokens||{},mc=mt.cache||{};
         return "<tr><td>"+escapeHtml(model.id)+(model.providerID?" <span class='hint'>// "+escapeHtml(model.providerID)+"</span>":"")+"</td><td>"+fmtNumber(m.steps)+"</td><td>"+fmtTokens(mt.input)+"</td><td>"+fmtTokens(mt.output)+"</td><td>"+fmtTokens(mc.read)+"</td><td>"+fmtMoney(m.cost)+"</td></tr>";
       }).join("")||'<tr><td colspan="6">NO MODEL USAGE IN THIS RANGE</td></tr>';
+      const limits=data.opencode.limits||{};
+      const limitEntries=Object.entries(limits).filter(([,v])=>v!=null && v!=="");
+      document.getElementById("opencodeLimits").innerHTML=limitEntries.length?limitEntries.map(([k,v])=>{
+        const value=typeof v==="object"?JSON.stringify(v):String(v);
+        return '<div class="account-card"><span>'+escapeHtml(k.toUpperCase())+'</span><strong>'+escapeHtml(value)+'</strong></div>';
+      }).join(""):'<div class="account-card"><span>LIMITS</span><strong>NOT EXPOSED BY OPENCODE STATS</strong></div>';
     }
     if(data.claude.error){
       set("claudeTokens","--");set("claudeSessions","--");
@@ -213,12 +223,19 @@ async function loadUsage(){
     }else{
       const c=data.commandCode,s=c.summary||{},credits=c.credits||{},windows=c.windows||{},five=windows.fiveHour||{},weekly=windows.weekly||{};
       set("commandCost",fmtMoney(s.cost));set("commandTokens",fmtTokens(s.totalTokens));
-      const windowLabel=w=>w.used!=null?"$"+Number(w.used).toFixed(2)+" / $"+Number(w.cap).toFixed(2):"NOT EXPOSED";
+      const windowLabel=w=>{
+        if(!w||!w.available)return "NOT EXPOSED";
+        const used="$"+Number(w.used||0).toFixed(2);
+        const cap="$"+Number(w.cap||0).toFixed(2);
+        const remaining="$"+Number(w.remaining||0).toFixed(2);
+        return used+" / "+cap+" ("+remaining+" left)";
+      };
       const cards=[
         ["ACCOUNT",c.account||"--"],["PLAN",c.planId||"--"],["STATUS",c.status||"--"],
         ["REMAINING CREDITS","$"+Number(credits.remaining||0).toFixed(2)],["REQUESTS",fmtNumber(s.requests)],["REQUESTS TODAY",fmtNumber(s.requestsToday)],
         ["INPUT TOKENS",fmtTokens(s.inputTokens)],["OUTPUT TOKENS",fmtTokens(s.outputTokens)],
         ["5-HOUR WINDOW",windowLabel(five)],["WEEKLY WINDOW",windowLabel(weekly)],
+        ["5-HOUR RESET",five.resetsAt||"--"],["WEEKLY RESET",weekly.resetsAt||"--"],
         ["COST TODAY",fmtMoney(s.costToday)]
       ];
       document.getElementById("commandDetails").innerHTML=cards.map(x=>'<div class="account-card"><span>'+escapeHtml(x[0])+'</span><strong>'+escapeHtml(String(x[1]))+"</strong></div>").join("");

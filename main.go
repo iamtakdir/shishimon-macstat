@@ -102,6 +102,7 @@ type OpenCodeUsage struct {
 	Tokens   OpenCodeTokens  `json:"tokens,omitempty"`
 	Models   []OpenCodeModel `json:"models,omitempty"`
 	Range    json.RawMessage `json:"range,omitempty"`
+	Limits   map[string]any  `json:"limits,omitempty"`
 }
 
 type OpenCodeTokens struct {
@@ -125,6 +126,15 @@ type OpenCodeModel struct {
 	Cost   float64        `json:"cost"`
 }
 
+type UsageWindow struct {
+	Used      float64 `json:"used"`
+	Cap       float64 `json:"cap"`
+	Remaining float64 `json:"remaining"`
+	Percent   float64 `json:"percent"`
+	ResetsAt  string  `json:"resetsAt,omitempty"`
+	Available bool    `json:"available"`
+}
+
 type CommandCodeUsage struct {
 	Error   string `json:"error,omitempty"`
 	Account string `json:"account,omitempty"`
@@ -137,8 +147,8 @@ type CommandCodeUsage struct {
 		Free      float64 `json:"free"`
 	} `json:"credits"`
 	Windows struct {
-		FiveHour map[string]any `json:"fiveHour"`
-		Weekly   map[string]any `json:"weekly"`
+		FiveHour UsageWindow `json:"fiveHour"`
+		Weekly   UsageWindow `json:"weekly"`
 	} `json:"windows"`
 	Summary CommandCodeSummary `json:"summary"`
 }
@@ -172,6 +182,7 @@ func main() {
 	url := fmt.Sprintf("http://%s:%s/?token=%s", ip, port, token)
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/favicon.ico", faviconHandler)
 	mux.HandleFunc("/", auth(token, dashboardHandler))
 	mux.HandleFunc("/events", auth(token, eventsHandler))
 	mux.HandleFunc("/api/usage", auth(token, usageHandler))
@@ -188,6 +199,12 @@ func main() {
 	}
 	fmt.Println("Run bro-stop to stop Shishimon.")
 	log.Fatal(server.ListenAndServe())
+}
+
+func faviconHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="#0d1417"/><text x="2" y="12" font-size="10" fill="#57f2b1">[◈]</text></svg>`))
 }
 
 func dashboardHandler(w http.ResponseWriter, r *http.Request) {
@@ -275,11 +292,7 @@ func collectOpenCodeUsage(rangeName string) (OpenCodeUsage, error) {
 		return OpenCodeUsage{}, fmt.Errorf("OpenCode stats unavailable: %w", err)
 	}
 
-	var result OpenCodeUsage
-	if err := json.Unmarshal(output, &result); err != nil {
-		return OpenCodeUsage{}, fmt.Errorf("could not parse OpenCode stats: %w", err)
-	}
-	return result, nil
+	return parseOpenCodeUsage(output)
 }
 
 func commandCodeKey() (string, error) {
@@ -305,6 +318,23 @@ func commandCodeKey() (string, error) {
 		return "", fmt.Errorf("Command Code auth file is invalid")
 	}
 	return auth.APIKey, nil
+}
+
+func parseOpenCodeUsage(output []byte) (OpenCodeUsage, error) {
+	var result OpenCodeUsage
+	if err := json.Unmarshal(output, &result); err != nil {
+		return OpenCodeUsage{}, fmt.Errorf("could not parse OpenCode stats: %w", err)
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(output, &raw); err == nil {
+		if limits, ok := raw["limits"].(map[string]any); ok {
+			result.Limits = limits
+		} else if quota, ok := raw["quota"].(map[string]any); ok {
+			result.Limits = quota
+		}
+	}
+	return result, nil
 }
 
 func commandCodeRequest(pathname string, orgID string) (map[string]any, error) {
@@ -395,12 +425,8 @@ func collectCommandCodeUsage() (CommandCodeUsage, error) {
 	result.Credits.Free = free
 	result.Credits.Remaining = monthly + purchased + free
 	if windows, ok := credits["windowLimits"].(map[string]any); ok {
-		if five, ok := windows["fiveHour"].(map[string]any); ok {
-			result.Windows.FiveHour = five
-		}
-		if weekly, ok := windows["weekly"].(map[string]any); ok {
-			result.Windows.Weekly = weekly
-		}
+		result.Windows.FiveHour = usageWindow(windows["fiveHour"])
+		result.Windows.Weekly = usageWindow(windows["weekly"])
 	}
 	result.Summary.Requests = int(number(summary["totalCount"]))
 	result.Summary.RequestsToday = int(number(today["totalCount"]))
@@ -438,6 +464,27 @@ func firstString(values map[string]any, keys ...string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func usageWindow(value any) UsageWindow {
+	window, ok := value.(map[string]any)
+	if !ok {
+		return UsageWindow{}
+	}
+	used := number(window["used"])
+	cap := number(window["cap"])
+	remaining := number(window["remaining"])
+	percent := number(window["percent"])
+	resetsAt, _ := firstString(window, "resetsAt", "resetAt", "resets_at")
+	available := cap > 0 || used > 0 || remaining > 0 || percent > 0 || resetsAt != ""
+	return UsageWindow{
+		Used:      used,
+		Cap:       cap,
+		Remaining: remaining,
+		Percent:   percent,
+		ResetsAt:  resetsAt,
+		Available: available,
+	}
 }
 
 type usageEvent struct {

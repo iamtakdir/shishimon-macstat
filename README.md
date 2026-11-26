@@ -30,6 +30,7 @@ Shishimon is a tiny Go web service that turns your Mac into a live system-monito
 - **One shared collector** — metrics are collected once every two seconds and shared with all connected clients.
 - **Self-monitoring** — see Shishimon's own CPU, resident memory, and PID.
 - **QR-ready startup** — prints a scannable QR code and local URL in Terminal.
+- **Mobile companion app** — Flutter app that scans the QR code, opens the dashboard in a WebView, and keeps the screen awake while monitoring.
 - **Simple lifecycle** — `bro-start` runs in the background; `bro-stop` shuts it down.
 - **Local-network focused** — uses a fresh access code per launch and is intended to be reachable only from your trusted LAN.
 - **No database** — stateless, lightweight, and easy to remove.
@@ -99,6 +100,30 @@ Runtime details:
 | Default port | `8080` |
 | Update interval | 2 seconds |
 | Access code | Fresh five-digit numeric code per launch |
+
+## Mobile app
+
+A Flutter companion app lives in [`mobile/`](mobile/). It scans the QR code from `bro-start`, opens the dashboard in a WebView, remembers recent connections, and keeps the screen awake while the dashboard is open.
+
+Requirements: Flutter 3.47+ and a phone on the same network as the Mac.
+
+Run on a connected Android phone or emulator:
+
+```sh
+cd mobile
+flutter pub get
+flutter run
+```
+
+Build an Android APK:
+
+```sh
+cd mobile
+flutter build apk --debug
+# build/app/outputs/flutter-apk/app-debug.apk
+```
+
+The access token changes every time the server restarts, so rescan the QR code if the app reports an expired token. iOS builds require Xcode and CocoaPods.
 
 ## Configuration
 
