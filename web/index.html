@@ -46,7 +46,7 @@
     <div class="card"><div class="metric-label">MEMORY PRESSURE</div><div id="pressure" class="value">--</div><div class="hint">virtual memory state</div></div>
     <div class="card"><div class="metric-label">BATTERY</div><div id="battery" class="value">--</div><div class="hint">power charge</div></div>
     <div class="card"><div class="metric-label">SYSTEM UPTIME</div><div id="uptime" class="value">--</div><div class="hint">since last boot</div></div>
-    <div class="card today-ai-card"><div class="metric-label">TODAY'S AI USE</div><div id="todayAiOpenCode" class="today-ai-line">OPENCODE <strong>--</strong></div><div id="todayAiCommandCode" class="today-ai-line">COMMAND CODE <strong>--</strong></div></div>
+    <div class="card today-ai-card"><div class="metric-label">TODAY'S AI USE</div><div id="todayAiOpenCode" class="today-ai-line">OPENCODE <strong>--</strong></div><div id="todayAiClaude" class="today-ai-line">CLAUDE CODE <strong>--</strong></div><div id="todayAiAntigravity" class="today-ai-line">ANTIGRAVITY <strong>--</strong></div><div id="todayAiCommandCode" class="today-ai-line">COMMAND CODE <strong>--</strong></div></div>
   </div>
   <div class="section-title">TIME // CALENDAR</div>
   <div class="time-grid">
@@ -69,7 +69,7 @@
         <div class="section-title">AI USAGE // PROVIDER TELEMETRY</div>
       </div>
       <div class="usage-actions">
-        <nav class="range-picker" aria-label="OpenCode date range">
+        <nav class="range-picker" aria-label="AI usage date range">
           <button class="range active" data-range="today">Today</button>
           <button class="range" data-range="7d">7 days</button>
           <button class="range" data-range="30d">30 days</button>
@@ -83,12 +83,24 @@
     <div class="grid usage-summary">
       <div class="card"><div class="metric-label">OPENCODE COST</div><div id="opencodeCost" class="value">$0.0000</div></div>
       <div class="card"><div class="metric-label">OPENCODE TOKENS</div><div id="opencodeTokens" class="value">0</div></div>
+      <div class="card"><div class="metric-label">CLAUDE CODE TOKENS</div><div id="claudeTokens" class="value">0</div></div>
+      <div class="card"><div class="metric-label">CLAUDE CODE SESSIONS</div><div id="claudeSessions" class="value">0</div></div>
+      <div class="card"><div class="metric-label">ANTIGRAVITY TOKENS</div><div id="antigravityTokens" class="value">0</div></div>
+      <div class="card"><div class="metric-label">ANTIGRAVITY STEPS</div><div id="antigravitySteps" class="value">0</div></div>
       <div class="card"><div class="metric-label">CMD CODE COST</div><div id="commandCost" class="value">$0.0000</div></div>
       <div class="card"><div class="metric-label">CMD CODE TOKENS</div><div id="commandTokens" class="value">0</div></div>
     </div>
     <div class="section-title">OPENCODE // BY MODEL</div>
     <div class="card table-card">
       <table><thead><tr><th>MODEL</th><th>STEPS</th><th>INPUT</th><th>OUTPUT</th><th>CACHE</th><th>COST</th></tr></thead><tbody id="opencodeModels"></tbody></table>
+    </div>
+    <div class="section-title">CLAUDE CODE // BY MODEL</div>
+    <div class="card table-card">
+      <table><thead><tr><th>MODEL</th><th>MESSAGES</th><th>INPUT</th><th>OUTPUT</th><th>CACHE READ</th><th>CACHE WRITE</th></tr></thead><tbody id="claudeModels"></tbody></table>
+    </div>
+    <div class="section-title">ANTIGRAVITY // BY MODEL</div>
+    <div class="card table-card">
+      <table><thead><tr><th>MODEL</th><th>STEPS</th><th>INPUT</th><th>OUTPUT</th><th>CACHE READ</th></tr></thead><tbody id="antigravityModels"></tbody></table>
     </div>
     <div class="section-title">COMMAND CODE // ACCOUNT</div>
     <div id="commandDetails" class="usage-account"></div>
@@ -124,26 +136,31 @@ const fmtTokens=value=>{
   return fmtNumber(n);
 };
 const fmtMoney=value=>"$"+Number(value||0).toFixed(4);
+const sumTokens=tokens=>{const t=tokens||{};return Number(t.input||0)+Number(t.output||0)+Number(t.cacheRead||0)+Number(t.cacheWrite||0)};
 
 async function loadTodaySummary(){
   try{
     const response=await fetch("/api/usage?range=today&token="+encodeURIComponent(token));
     if(!response.ok)return;
     const data=await response.json();
-    let openTokens=0,openCost=0,openModels=0;
-    if(!data.opencode.error){
-      const t=data.opencode.tokens||{},cache=t.cache||{};
+    const opencode=data.opencode||{},command=data.commandCode||{},claude=data.claude||{},antigravity=data.antigravity||{};
+    let openTokens=0;
+    if(!opencode.error){
+      const t=opencode.tokens||{},cache=t.cache||{};
       openTokens=Number(t.input||0)+Number(t.output||0)+Number(t.reasoning||0)+Number(cache.read||0)+Number(cache.write||0);
-      openCost=Number(data.opencode.cost||0);
-      openModels=(data.opencode.models||[]).length;
     }
-    const command=data.commandCode||{},summary=command.summary||{};
-    const commandTokens=Number(summary.todayTokens||0);
-    const combined=openTokens+commandTokens;
-    document.getElementById("todayAiOpenCode").innerHTML="OPENCODE <strong>"+fmtTokens(openTokens)+"</strong>";
-    document.getElementById("todayAiCommandCode").innerHTML="COMMAND CODE <strong>"+fmtTokens(commandTokens)+"</strong>";
+    const commandTokens=Number((command.summary||{}).todayTokens||0);
+    const claudeTokens=sumTokens(claude.tokens);
+    const antigravityTokens=sumTokens(antigravity.tokens);
+    const displayTokens=(error,value)=>error?"--":fmtTokens(value);
+    document.getElementById("todayAiOpenCode").innerHTML="OPENCODE <strong>"+displayTokens(opencode.error,openTokens)+"</strong>";
+    document.getElementById("todayAiClaude").innerHTML="CLAUDE CODE <strong>"+displayTokens(claude.error,claudeTokens)+"</strong>";
+    document.getElementById("todayAiAntigravity").innerHTML="ANTIGRAVITY <strong>"+displayTokens(antigravity.error,antigravityTokens)+"</strong>";
+    document.getElementById("todayAiCommandCode").innerHTML="COMMAND CODE <strong>"+displayTokens(command.error,commandTokens)+"</strong>";
   }catch(error){
     document.getElementById("todayAiOpenCode").innerHTML="OPENCODE <strong>--</strong>";
+    document.getElementById("todayAiClaude").innerHTML="CLAUDE CODE <strong>--</strong>";
+    document.getElementById("todayAiAntigravity").innerHTML="ANTIGRAVITY <strong>--</strong>";
     document.getElementById("todayAiCommandCode").innerHTML="COMMAND CODE <strong>--</strong>";
   }
 }
@@ -168,17 +185,40 @@ async function loadUsage(){
         return "<tr><td>"+escapeHtml(model.id)+(model.providerID?" <span class='hint'>// "+escapeHtml(model.providerID)+"</span>":"")+"</td><td>"+fmtNumber(m.steps)+"</td><td>"+fmtTokens(mt.input)+"</td><td>"+fmtTokens(mt.output)+"</td><td>"+fmtTokens(mc.read)+"</td><td>"+fmtMoney(m.cost)+"</td></tr>";
       }).join("")||'<tr><td colspan="6">NO MODEL USAGE IN THIS RANGE</td></tr>';
     }
+    if(data.claude.error){
+      set("claudeTokens","--");set("claudeSessions","--");
+      document.getElementById("claudeModels").innerHTML='<tr><td colspan="6">'+escapeHtml(data.claude.error)+"</td></tr>";
+    }else{
+      const c=data.claude||{};
+      set("claudeTokens",fmtTokens(sumTokens(c.tokens)));set("claudeSessions",fmtNumber(c.sessions));
+      document.getElementById("claudeModels").innerHTML=(c.models||[]).map(m=>{
+        const mt=m.tokens||{};
+        return "<tr><td>"+escapeHtml(m.model)+"</td><td>"+fmtNumber(m.messages)+"</td><td>"+fmtTokens(mt.input)+"</td><td>"+fmtTokens(mt.output)+"</td><td>"+fmtTokens(mt.cacheRead)+"</td><td>"+fmtTokens(mt.cacheWrite)+"</td></tr>";
+      }).join("")||'<tr><td colspan="6">NO CLAUDE CODE USAGE IN THIS RANGE</td></tr>';
+    }
+    if(data.antigravity.error){
+      set("antigravityTokens","--");set("antigravitySteps","--");
+      document.getElementById("antigravityModels").innerHTML='<tr><td colspan="5">'+escapeHtml(data.antigravity.error)+"</td></tr>";
+    }else{
+      const a=data.antigravity||{};
+      set("antigravityTokens",fmtTokens(sumTokens(a.tokens)));set("antigravitySteps",fmtNumber(a.steps));
+      document.getElementById("antigravityModels").innerHTML=(a.models||[]).map(m=>{
+        const mt=m.tokens||{};
+        return "<tr><td>"+escapeHtml(m.model)+"</td><td>"+fmtNumber(m.steps)+"</td><td>"+fmtTokens(mt.input)+"</td><td>"+fmtTokens(mt.output)+"</td><td>"+fmtTokens(mt.cacheRead)+"</td></tr>";
+      }).join("")||'<tr><td colspan="5">NO ANTIGRAVITY USAGE IN THIS RANGE</td></tr>';
+    }
     if(data.commandCode.error){
       set("commandCost","--");set("commandTokens","--");
       document.getElementById("commandDetails").innerHTML='<div class="account-card"><span>ERROR</span><strong>'+escapeHtml(data.commandCode.error)+"</strong></div>";
     }else{
       const c=data.commandCode,s=c.summary||{},credits=c.credits||{},windows=c.windows||{},five=windows.fiveHour||{},weekly=windows.weekly||{};
       set("commandCost",fmtMoney(s.cost));set("commandTokens",fmtTokens(s.totalTokens));
+      const windowLabel=w=>w.used!=null?"$"+Number(w.used).toFixed(2)+" / $"+Number(w.cap).toFixed(2):"NOT EXPOSED";
       const cards=[
         ["ACCOUNT",c.account||"--"],["PLAN",c.planId||"--"],["STATUS",c.status||"--"],
         ["REMAINING CREDITS","$"+Number(credits.remaining||0).toFixed(2)],["REQUESTS",fmtNumber(s.requests)],["REQUESTS TODAY",fmtNumber(s.requestsToday)],
         ["INPUT TOKENS",fmtTokens(s.inputTokens)],["OUTPUT TOKENS",fmtTokens(s.outputTokens)],
-        ["5-HOUR WINDOW",five.used!=null?five.used+"/"+five.cap:"NOT EXPOSED"],["WEEKLY WINDOW",weekly.used!=null?weekly.used+"/"+weekly.cap:"NOT EXPOSED"],
+        ["5-HOUR WINDOW",windowLabel(five)],["WEEKLY WINDOW",windowLabel(weekly)],
         ["COST TODAY",fmtMoney(s.costToday)]
       ];
       document.getElementById("commandDetails").innerHTML=cards.map(x=>'<div class="account-card"><span>'+escapeHtml(x[0])+'</span><strong>'+escapeHtml(String(x[1]))+"</strong></div>").join("");

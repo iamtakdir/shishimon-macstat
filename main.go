@@ -1,15 +1,19 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"embed"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -50,6 +54,43 @@ type UsageResponse struct {
 	UpdatedAt   time.Time        `json:"updatedAt"`
 	OpenCode    OpenCodeUsage    `json:"opencode"`
 	CommandCode CommandCodeUsage `json:"commandCode"`
+	Claude      ClaudeUsage      `json:"claude"`
+	Antigravity AntigravityUsage `json:"antigravity"`
+}
+
+type UsageTokens struct {
+	Input      int64 `json:"input"`
+	Output     int64 `json:"output"`
+	CacheRead  int64 `json:"cacheRead"`
+	CacheWrite int64 `json:"cacheWrite"`
+}
+
+type ClaudeUsage struct {
+	Error    string        `json:"error,omitempty"`
+	Sessions int           `json:"sessions"`
+	Messages int           `json:"messages"`
+	Tokens   UsageTokens   `json:"tokens"`
+	Models   []ClaudeModel `json:"models"`
+}
+
+type ClaudeModel struct {
+	Model    string      `json:"model"`
+	Messages int         `json:"messages"`
+	Tokens   UsageTokens `json:"tokens"`
+}
+
+type AntigravityUsage struct {
+	Error    string             `json:"error,omitempty"`
+	Sessions int                `json:"sessions"`
+	Steps    int                `json:"steps"`
+	Tokens   UsageTokens        `json:"tokens"`
+	Models   []AntigravityModel `json:"models"`
+}
+
+type AntigravityModel struct {
+	Model  string      `json:"model"`
+	Steps  int         `json:"steps"`
+	Tokens UsageTokens `json:"tokens"`
 }
 
 type OpenCodeUsage struct {
@@ -178,6 +219,18 @@ func usageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	response.CommandCode = commandCode
 
+	claude, err := collectClaudeUsage(rangeName)
+	if err != nil {
+		claude.Error = err.Error()
+	}
+	response.Claude = claude
+
+	antigravity, err := collectAntigravityUsage(rangeName)
+	if err != nil {
+		antigravity.Error = err.Error()
+	}
+	response.Antigravity = antigravity
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(response)
@@ -254,7 +307,7 @@ func commandCodeKey() (string, error) {
 	return auth.APIKey, nil
 }
 
-func commandCodeRequest(pathname string) (map[string]any, error) {
+func commandCodeRequest(pathname string, orgID string) (map[string]any, error) {
 	key, err := commandCodeKey()
 	if err != nil {
 		return nil, err
@@ -262,6 +315,13 @@ func commandCodeRequest(pathname string) (map[string]any, error) {
 	baseURL := os.Getenv("COMMAND_CODE_BASE_URL")
 	if baseURL == "" {
 		baseURL = "https://api.commandcode.ai"
+	}
+	if orgID != "" {
+		separator := "?"
+		if strings.Contains(pathname, "?") {
+			separator = "&"
+		}
+		pathname += separator + "orgId=" + url.QueryEscape(orgID)
 	}
 	req, err := http.NewRequest(http.MethodGet, baseURL+pathname, nil)
 	if err != nil {
@@ -290,23 +350,30 @@ func commandCodeRequest(pathname string) (map[string]any, error) {
 }
 
 func collectCommandCodeUsage() (CommandCodeUsage, error) {
-	whoami, err := commandCodeRequest("/alpha/whoami?limits=1")
+	whoami, err := commandCodeRequest("/alpha/whoami?limits=1", "")
 	if err != nil {
 		return CommandCodeUsage{}, err
 	}
-	credits, err := commandCodeRequest("/alpha/billing/credits")
+	orgID := ""
+	if org, ok := whoami["org"].(map[string]any); ok {
+		orgID, _ = org["id"].(string)
+	}
+	credits, err := commandCodeRequest("/alpha/billing/credits", orgID)
 	if err != nil {
 		return CommandCodeUsage{}, err
 	}
-	subscriptions, err := commandCodeRequest("/alpha/billing/subscriptions")
+	subscriptions, err := commandCodeRequest("/alpha/billing/subscriptions", orgID)
 	if err != nil {
 		return CommandCodeUsage{}, err
 	}
-	summary, err := commandCodeRequest("/alpha/usage/summary")
+	summary, err := commandCodeRequest("/alpha/usage/summary", orgID)
 	if err != nil {
 		return CommandCodeUsage{}, err
 	}
-	today, err := commandCodeRequest("/alpha/usage/summary?since=" + time.Now().Format("2006-01-02") + "T00:00:00.000Z")
+	// The API expects UTC, so convert the local start of today to UTC.
+	now := time.Now()
+	localMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	today, err := commandCodeRequest("/alpha/usage/summary?since="+url.QueryEscape(localMidnight.UTC().Format("2006-01-02T15:04:05.000Z")), orgID)
 	if err != nil {
 		today = map[string]any{}
 	}
@@ -371,6 +438,344 @@ func firstString(values map[string]any, keys ...string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+type usageEvent struct {
+	Timestamp time.Time
+	Session   string
+	Model     string
+	Tokens    UsageTokens
+}
+
+func (tokens *UsageTokens) add(other UsageTokens) {
+	tokens.Input += other.Input
+	tokens.Output += other.Output
+	tokens.CacheRead += other.CacheRead
+	tokens.CacheWrite += other.CacheWrite
+}
+
+func (tokens UsageTokens) total() int64 {
+	return tokens.Input + tokens.Output + tokens.CacheRead + tokens.CacheWrite
+}
+
+const usageCacheTTL = 60 * time.Second
+
+var claudeEventsCache struct {
+	sync.Mutex
+	loadedAt time.Time
+	events   []usageEvent
+	err      error
+}
+
+var antigravityEventsCache struct {
+	sync.Mutex
+	loadedAt time.Time
+	events   []usageEvent
+	err      error
+}
+
+func rangeCutoff(rangeName string) (time.Time, bool) {
+	now := time.Now()
+	startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	switch rangeName {
+	case "today":
+		return startOfToday, true
+	case "7d":
+		return startOfToday.AddDate(0, 0, -6), true
+	case "30d":
+		return startOfToday.AddDate(0, 0, -29), true
+	case "year":
+		return time.Date(now.Year(), time.January, 1, 0, 0, 0, 0, now.Location()), true
+	default:
+		return time.Time{}, false
+	}
+}
+
+func claudeUsageEvents() ([]usageEvent, error) {
+	claudeEventsCache.Lock()
+	defer claudeEventsCache.Unlock()
+	if time.Since(claudeEventsCache.loadedAt) < usageCacheTTL {
+		return claudeEventsCache.events, claudeEventsCache.err
+	}
+	events, err := scanClaudeUsage()
+	claudeEventsCache.events = events
+	claudeEventsCache.err = err
+	claudeEventsCache.loadedAt = time.Now()
+	return events, err
+}
+
+func antigravityUsageEvents() ([]usageEvent, error) {
+	antigravityEventsCache.Lock()
+	defer antigravityEventsCache.Unlock()
+	if time.Since(antigravityEventsCache.loadedAt) < usageCacheTTL {
+		return antigravityEventsCache.events, antigravityEventsCache.err
+	}
+	events, err := scanAntigravityUsage()
+	antigravityEventsCache.events = events
+	antigravityEventsCache.err = err
+	antigravityEventsCache.loadedAt = time.Now()
+	return events, err
+}
+
+func collectClaudeUsage(rangeName string) (ClaudeUsage, error) {
+	events, err := claudeUsageEvents()
+	if err != nil {
+		return ClaudeUsage{}, err
+	}
+	cutoff, bounded := rangeCutoff(rangeName)
+	result := ClaudeUsage{Models: []ClaudeModel{}}
+	sessions := map[string]struct{}{}
+	models := map[string]*ClaudeModel{}
+	for _, event := range events {
+		if bounded && event.Timestamp.Before(cutoff) {
+			continue
+		}
+		result.Messages++
+		result.Tokens.add(event.Tokens)
+		if event.Session != "" {
+			sessions[event.Session] = struct{}{}
+		}
+		name := event.Model
+		if name == "" || name == "<synthetic>" {
+			name = "unknown"
+		}
+		row := models[name]
+		if row == nil {
+			row = &ClaudeModel{Model: name}
+			models[name] = row
+		}
+		row.Messages++
+		row.Tokens.add(event.Tokens)
+	}
+	result.Sessions = len(sessions)
+	for _, row := range models {
+		result.Models = append(result.Models, *row)
+	}
+	sort.Slice(result.Models, func(i, j int) bool {
+		if result.Models[i].Tokens.total() == result.Models[j].Tokens.total() {
+			return result.Models[i].Model < result.Models[j].Model
+		}
+		return result.Models[i].Tokens.total() > result.Models[j].Tokens.total()
+	})
+	return result, nil
+}
+
+func collectAntigravityUsage(rangeName string) (AntigravityUsage, error) {
+	events, err := antigravityUsageEvents()
+	if err != nil {
+		return AntigravityUsage{}, err
+	}
+	cutoff, bounded := rangeCutoff(rangeName)
+	result := AntigravityUsage{Models: []AntigravityModel{}}
+	sessions := map[string]struct{}{}
+	models := map[string]*AntigravityModel{}
+	for _, event := range events {
+		if bounded && event.Timestamp.Before(cutoff) {
+			continue
+		}
+		result.Steps++
+		result.Tokens.add(event.Tokens)
+		if event.Session != "" {
+			sessions[event.Session] = struct{}{}
+		}
+		name := event.Model
+		if name == "" {
+			name = "unknown"
+		}
+		row := models[name]
+		if row == nil {
+			row = &AntigravityModel{Model: name}
+			models[name] = row
+		}
+		row.Steps++
+		row.Tokens.add(event.Tokens)
+	}
+	result.Sessions = len(sessions)
+	for _, row := range models {
+		result.Models = append(result.Models, *row)
+	}
+	sort.Slice(result.Models, func(i, j int) bool {
+		if result.Models[i].Tokens.total() == result.Models[j].Tokens.total() {
+			return result.Models[i].Model < result.Models[j].Model
+		}
+		return result.Models[i].Tokens.total() > result.Models[j].Tokens.total()
+	})
+	return result, nil
+}
+
+func scanClaudeUsage() ([]usageEvent, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	configDir := os.Getenv("CLAUDE_CONFIG_DIR")
+	if configDir == "" {
+		configDir = filepath.Join(home, ".claude")
+	}
+	projectsDir := filepath.Join(configDir, "projects")
+	info, err := os.Stat(projectsDir)
+	if err != nil || !info.IsDir() {
+		return nil, nil
+	}
+
+	var events []usageEvent
+	seen := map[string]struct{}{}
+	err = filepath.WalkDir(projectsDir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() || !strings.HasSuffix(path, ".jsonl") {
+			return nil
+		}
+		events = append(events, scanClaudeFile(path, seen)...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return events, nil
+}
+
+func scanClaudeFile(path string, seen map[string]struct{}) []usageEvent {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	var events []usageEvent
+	fallbackSession := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 64*1024*1024)
+	lineNumber := 0
+	for scanner.Scan() {
+		lineNumber++
+		line := scanner.Bytes()
+		if !bytes.Contains(line, []byte(`"assistant"`)) || !bytes.Contains(line, []byte(`"usage"`)) {
+			continue
+		}
+		var entry struct {
+			Type      string `json:"type"`
+			Timestamp string `json:"timestamp"`
+			SessionID string `json:"sessionId"`
+			Message   struct {
+				ID    string `json:"id"`
+				Model string `json:"model"`
+				Usage struct {
+					InputTokens              int64 `json:"input_tokens"`
+					OutputTokens             int64 `json:"output_tokens"`
+					CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+					CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+				} `json:"usage"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal(line, &entry); err != nil || entry.Type != "assistant" {
+			continue
+		}
+		tokens := UsageTokens{
+			Input:      entry.Message.Usage.InputTokens,
+			Output:     entry.Message.Usage.OutputTokens,
+			CacheRead:  entry.Message.Usage.CacheReadInputTokens,
+			CacheWrite: entry.Message.Usage.CacheCreationInputTokens,
+		}
+		if tokens.total() == 0 {
+			continue
+		}
+		key := entry.Message.ID
+		if key == "" {
+			key = fmt.Sprintf("%s:%d", path, lineNumber)
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		session := entry.SessionID
+		if session == "" {
+			session = fallbackSession
+		}
+		timestamp, _ := time.Parse(time.RFC3339Nano, entry.Timestamp)
+		events = append(events, usageEvent{
+			Timestamp: timestamp,
+			Session:   session,
+			Model:     entry.Message.Model,
+			Tokens:    tokens,
+		})
+	}
+	return events
+}
+
+func scanAntigravityUsage() ([]usageEvent, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	geminiDir := os.Getenv("GEMINI_DIR")
+	if geminiDir == "" {
+		geminiDir = filepath.Join(home, ".gemini")
+	}
+
+	var events []usageEvent
+	seen := map[string]struct{}{}
+	for _, app := range []string{"antigravity", "antigravity-cli", "antigravity-ide"} {
+		pattern := filepath.Join(geminiDir, app, "brain", "*", ".system_generated", "logs", "transcript_full.jsonl")
+		files, _ := filepath.Glob(pattern)
+		for _, path := range files {
+			conversation := filepath.Base(filepath.Dir(filepath.Dir(filepath.Dir(path))))
+			events = append(events, scanAntigravityFile(path, conversation, seen)...)
+		}
+	}
+	return events, nil
+}
+
+func scanAntigravityFile(path string, conversation string, seen map[string]struct{}) []usageEvent {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	var events []usageEvent
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 64*1024*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if !bytes.Contains(line, []byte(`"input_tokens"`)) {
+			continue
+		}
+		var entry struct {
+			StepIndex       int    `json:"step_index"`
+			Source          string `json:"source"`
+			CreatedAt       string `json:"created_at"`
+			InputTokens     int64  `json:"input_tokens"`
+			CacheReadTokens int64  `json:"cache_read_tokens"`
+			OutputTokens    int64  `json:"output_tokens"`
+			Model           string `json:"model"`
+		}
+		if err := json.Unmarshal(line, &entry); err != nil {
+			continue
+		}
+		if entry.Source != "" && entry.Source != "MODEL" {
+			continue
+		}
+		tokens := UsageTokens{
+			Input:     entry.InputTokens,
+			Output:    entry.OutputTokens,
+			CacheRead: entry.CacheReadTokens,
+		}
+		if tokens.total() == 0 {
+			continue
+		}
+		key := fmt.Sprintf("%s:%d:%s:%d:%d:%d", conversation, entry.StepIndex, entry.CreatedAt, tokens.Input, tokens.Output, tokens.CacheRead)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		timestamp, _ := time.Parse(time.RFC3339Nano, entry.CreatedAt)
+		events = append(events, usageEvent{
+			Timestamp: timestamp,
+			Session:   conversation,
+			Model:     entry.Model,
+			Tokens:    tokens,
+		})
+	}
+	return events
 }
 
 func eventsHandler(w http.ResponseWriter, r *http.Request) {
